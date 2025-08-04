@@ -15,7 +15,6 @@ defmodule Firefly do
 
   def update_state(id, value) do
     Agent.update(__MODULE__, fn state_map -> Map.put(state_map, id, value) end)
-    IO.puts("State updated for #{id}: #{value}")
   end
 
   def print_state(state) do
@@ -27,11 +26,12 @@ defmodule Firefly do
 
   def print_states(n) do
     IO.puts("\e[2J\e[H")
+    IO.write("            ")
     Enum.each(1..n, fn i ->
       print_state(get_state("task_#{i}")) end)
   end
 
-  def start_n_tasks(n,off_time \\ 2000,print_time \\ 30) do
+  def start_n_tasks(n,off_time \\ 20000,print_time \\ 30) do
     start_state_map(n)
     Enum.each(1..n, fn i ->
     Task.Supervisor.start_child(Firefly.TaskSupervisor, fn ->
@@ -39,22 +39,15 @@ defmodule Firefly do
       Process.register(self(), name)
       rand_time = :rand.uniform(off_time)
       # rand_time = (div(off_time - 500,n)) * i
-      loop(n,i, false, off_time - rand_time)
+      loop(n,name, false, off_time - rand_time)
     end)
     end)
-    # _ref = :timer.apply_interval(print_time, Firefly, :print_states, [n] )
-    listen()
-  end
-
-  def listen() do
-    receive do
-      {:signal,from_name} ->
-        listen()
-    end
+    _ref = :timer.apply_interval(print_time, Firefly, :print_states, [n] )
+    :timer.sleep(:infinity)
   end
 
   def broadcast_signal(n,name) do
-    Enum.map(1..n,fn i -> String.to_atom("task_#{i}") end)
+    Enum.map(1..n,fn i -> :"task_#{i}" end)
       |> Enum.each(fn r_name ->
         pid = Process.whereis(r_name)
         if Process.alive?(pid) and r_name != name do
@@ -63,54 +56,41 @@ defmodule Firefly do
       end)
   end
 
-  defp loop(n,id,state,duration,off_time \\ 2000,on_time \\ 500,diff_time \\ 500,flick_time \\ 100) do
-    IO.puts("Task #{id} started with state: #{state} and duration: #{duration} ms")
-    {:registered_name, p_name} = Process.info(self(), :registered_name)
+  defp loop(n,p_name,state,duration,off_time \\ 20000,on_time \\ 5000,diff_time \\ 5000,flick_time \\ 1000) do
     name_string = Atom.to_string(p_name)
     last_flick = flick_time >= duration
     start_time = :erlang.monotonic_time(:millisecond)
     if(state) do
       receive do
-        {:signal,from_name} ->
+        {:signal,_from_name} ->
           end_time = :erlang.monotonic_time(:millisecond)
-          IO.puts("Task #{id} received signal from #{from_name}, remaining duration: #{duration - (end_time - start_time)} ms")
-          loop(n,id,state,duration - (end_time - start_time))
+          loop(n,p_name,state,duration - (end_time - start_time))
       after flick_time ->
         if(last_flick) do
           update_state(name_string, false)
-          loop(n,id,false,off_time)
+          loop(n,p_name,false,off_time)
         else
-          # end_time = :erlang.monotonic_time(:millisecond)
-          # loop(n,id,state,duration - flick_time - (end_time - start_time))
-          loop(n,id,state,duration - flick_time)
+          loop(n,p_name,state,duration - flick_time)
         end
       end
     else
       receive do
-        {:signal,from_name} ->
+        {:signal,_from_name} ->
           end_time = :erlang.monotonic_time(:millisecond)
           if duration-(end_time-start_time) <= diff_time do
             update_state(name_string, true)
             broadcast_signal(n,p_name)
-            loop(n,id,true,on_time)
+            loop(n,p_name,true,on_time)
           else
-            IO.puts("Task #{id} received signal from #{from_name}, remaining duration: #{duration - (end_time - start_time)-diff_time} ms")
-            loop(n,id,state,duration-(end_time-start_time)-diff_time)
+            loop(n,p_name,state,duration-(end_time-start_time)-diff_time)
           end
-      # after
-      #   duration ->
-      #     update_state(name_string, true)
-      #     broadcast_signal(n,p_name)
-      #     loop(n,id,true,on_time)
       after flick_time ->
         if(last_flick) do
           update_state(name_string, true)
           broadcast_signal(n,p_name)
-          loop(n,id,true,on_time)
+          loop(n,p_name,true,on_time)
         else
-          # end_time = :erlang.monotonic_time(:millisecond)
-          # loop(n,id,state,duration - flick_time - (end_time - start_time))
-          loop(n,id,state,duration - flick_time)
+          loop(n,p_name,state,duration - flick_time)
         end
       end
     end
@@ -120,4 +100,4 @@ defmodule Firefly do
 end
 
 Task.Supervisor.start_link(name: Firefly.TaskSupervisor)
-Firefly.start_n_tasks 3
+Firefly.start_n_tasks 8

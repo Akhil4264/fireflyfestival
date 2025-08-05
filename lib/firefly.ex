@@ -31,7 +31,7 @@ defmodule Firefly do
       print_state(get_state("task_#{i}")) end)
   end
 
-  def start_n_tasks(n,off_time \\ 20000,print_time \\ 30) do
+  def start_n_tasks(n,off_time \\ 2000,print_time \\ 30) do
     start_state_map(n)
     Enum.each(1..n, fn i ->
     Task.Supervisor.start_child(Firefly.TaskSupervisor, fn ->
@@ -41,7 +41,7 @@ defmodule Firefly do
       # rand_time = (div(off_time - 500,n)) * i
       loop(n,name, false, off_time - rand_time)
     end)
-    end)
+    end) # apparently spawn or Task works too, just wanted to see how Supervisor works.
     _ref = :timer.apply_interval(print_time, Firefly, :print_states, [n] )
     :timer.sleep(:infinity)
   end
@@ -56,7 +56,7 @@ defmodule Firefly do
       end)
   end
 
-  defp loop(n,p_name,state,duration,off_time \\ 20000,on_time \\ 5000,diff_time \\ 5000,flick_time \\ 1000) do
+  defp loop(n,p_name,state,duration,off_time \\ 2000,on_time \\ 500,diff_time \\ 1000,flick_time \\ 100) do
     name_string = Atom.to_string(p_name)
     last_flick = flick_time >= duration
     start_time = :erlang.monotonic_time(:millisecond)
